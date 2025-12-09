@@ -1,0 +1,67 @@
+name: Notify Jira on PR
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  notify-jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up variables
+        env:
+          JIRA_HOST: ${{ secrets.JIRA_HOST }}
+          JIRA_USER: ${{ secrets.JIRA_USER }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          echo "PR title: $PR_TITLE"
+          echo "PR url: $PR_URL"
+          echo "Branch: $BRANCH"
+
+          # 1) Try to extract issue key from PR title first, then branch name
+          ISSUE_KEY="$(echo "$PR_TITLE" | grep -oE 'LYP-[0-9]+' || true)"
+          if [ -z "$ISSUE_KEY" ]; then
+            ISSUE_KEY="$(echo "$BRANCH" | grep -oE 'LYP-[0-9]+' || true)"
+          fi
+
+          if [ -z "$ISSUE_KEY" ]; then
+            echo "No Jira issue key found in PR title or branch name. Exiting gracefully."
+            exit 0
+          fi
+
+          echo "Found Jira Issue: $ISSUE_KEY"
+
+          # 2) Build comment JSON
+          COMMENT="{\"body\": \"A Pull Request has been created or updated for this issue.\\n\\n**PR Title:** ${PR_TITLE}\\n**URL:** ${PR_URL}\\n**Branch:** ${BRANCH}\"}"
+
+          # 3) Post comment to Jira issue
+          echo "Posting comment to Jira..."
+          curl -s -S -X POST \
+            -u "${JIRA_USER}:${JIRA_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${COMMENT}" \
+            "${JIRA_HOST}/rest/api/3/issue/${ISSUE_KEY}/comment" \
+            > /tmp/jira_comment_response.json
+
+          echo "Comment response:"
+          cat /tmp/jira_comment_response.json
+
+          # 4) Create remote link so the PR appears under 'Development' section
+          echo "Creating remote link..."
+          REMOTELINK_PAYLOAD="{\"object\": {\"url\": \"${PR_URL}\", \"title\": \"${PR_TITLE}\"}}"
+
+          curl -s -S -X POST \
+            -u "${JIRA_USER}:${JIRA_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${REMOTELINK_PAYLOAD}" \
+            "${JIRA_HOST}/rest/api/3/issue/${ISSUE_KEY}/remotelink" \
+            > /tmp/jira_remotelink_response.json
+
+          echo "Remote link response:"
+          cat /tmp/jira_remotelink_response.json
