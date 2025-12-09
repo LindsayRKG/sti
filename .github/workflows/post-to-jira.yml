@@ -38,24 +38,30 @@ jobs:
           echo "Found Jira Issue: $ISSUE_KEY"
 
           # 2) Build comment JSON
-          COMMENT="{\"body\": \"A Pull Request has been created/updated: [${PR_TITLE}](${PR_URL})\\n\\nBranch: ${BRANCH}\"}"
+          COMMENT="{\"body\": \"A Pull Request has been created or updated for this issue.\\n\\n**PR Title:** ${PR_TITLE}\\n**URL:** ${PR_URL}\\n**Branch:** ${BRANCH}\"}"
 
           # 3) Post comment to Jira issue
-          CURL_CMD=$(cat <<EOF
+          echo "Posting comment to Jira..."
           curl -s -S -X POST \
             -u "${JIRA_USER}:${JIRA_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data '${COMMENT}' \
-            "${JIRA_HOST}/rest/api/3/issue/${ISSUE_KEY}/comment"
-          EOF
-          )
-                    echo "Posting comment to Jira..."
-          eval "$CURL_CMD" > /tmp/jira_comment_response.json
-          echo "Response:"
+            --data "${COMMENT}" \
+            "${JIRA_HOST}/rest/api/3/issue/${ISSUE_KEY}/comment" \
+            > /tmp/jira_comment_response.json
+
+          echo "Comment response:"
           cat /tmp/jira_comment_response.json
 
-          # 4) (Optional) Create remote link to the PR in Jira (so it appears under Development section)
+          # 4) Create remote link so the PR appears under 'Development' section
+          echo "Creating remote link..."
           REMOTELINK_PAYLOAD="{\"object\": {\"url\": \"${PR_URL}\", \"title\": \"${PR_TITLE}\"}}"
-          curl -s -S -X POST -u "${JIRA_USER}:${JIRA_TOKEN}" -H "Content-Type: application/json" --data "${REMOTELINK_PAYLOAD}" "${JIRA_HOST}/rest/api/3/issue/${ISSUE_KEY}/remotelink" > /tmp/jira_remotelink_response.json || true
+
+          curl -s -S -X POST \
+            -u "${JIRA_USER}:${JIRA_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${REMOTELINK_PAYLOAD}" \
+            "${JIRA_HOST}/rest/api/3/issue/${ISSUE_KEY}/remotelink" \
+            > /tmp/jira_remotelink_response.json
+
           echo "Remote link response:"
-          cat /tmp/jira_remotelink_response.json || true
+          cat /tmp/jira_remotelink_response.json
